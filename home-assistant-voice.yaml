@@ -37,7 +37,7 @@ esphome:
     priority: 375
     then:
       # Run the script to refresh the LED status
-      - script.execute: control_leds
+      - #script.execute: control_leds
       - delay: 1s
       - switch.turn_on: internal_speaker_amp
       # If after 10 minutes, the device is still initializing (It did not yet connect to Home Assistant), turn off the init_in_progress variable and run the script to refresh the LED status
@@ -47,7 +47,7 @@ esphome:
             lambda: return id(init_in_progress);
           then:
             - lambda: id(init_in_progress) = false;
-            - script.execute: control_leds
+            - #script.execute: control_leds
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -79,9 +79,9 @@ wifi:
   fast_connect: ${hidden_ssid}
   on_connect:
     - lambda: id(improv_ble_in_progress) = false;
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_disconnect:
-    - script.execute: control_leds
+    - #script.execute: control_leds
 
 network:
   enable_ipv6: true
@@ -94,9 +94,9 @@ logger:
 api:
   id: api_id
   on_client_connected:
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_client_disconnected:
-    - script.execute: control_leds
+    - #script.execute: control_leds
   encryption:   # Uses key set by Home Assistant
 
 ota:
@@ -197,9 +197,9 @@ switch:
           then:
             - microphone.unmute:
     on_turn_on:
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_turn_off:
-      - script.execute: control_leds
+      - #script.execute: control_leds
   # Wake Word Sound Switch.
   - platform: template
     id: wake_sound
@@ -231,7 +231,7 @@ switch:
           decibel_reduction: 0
           duration: 1.0s
       # Refresh the LED ring
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_turn_on:
       # Duck audio
       - mixer_speaker.apply_ducking:
@@ -243,7 +243,7 @@ switch:
       # Ring timer
       - script.execute: ring_timer
       # Refresh LED
-      - script.execute: control_leds
+      - #script.execute: control_leds
       # If 15 minutes have passed and the timer is still ringing, stop it.
       - delay: 15min
       - switch.turn_off: timer_ringing
@@ -263,9 +263,9 @@ binary_sensor:
       number: GPIO0
       inverted: true
     on_press:
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_release:
-      - script.execute: control_leds
+      - #script.execute: control_leds
       # If a factory reset is requested, factory reset on release
       - if:
           condition:
@@ -510,7 +510,7 @@ binary_sensor:
     #  - Sound played
     on_press:
       - lambda: id(jack_plugged_recently) = true;
-      - script.execute: control_leds
+      - #script.execute: control_leds
       - delay: 200ms
       - script.execute:
           id: play_sound
@@ -518,13 +518,13 @@ binary_sensor:
           sound_file: !lambda return id(jack_connected_sound);
       - delay: 800ms
       - lambda: id(jack_plugged_recently) = false;
-      - script.execute: control_leds
+      - #script.execute: control_leds
     # When the jack is unplugged:
     #  - LED animation
     #  - Sound played
     on_release:
       - lambda: id(jack_unplugged_recently) = true;
-      - script.execute: control_leds
+      - #script.execute: control_leds
       - delay: 200ms
       - script.execute:
           id: play_sound
@@ -532,7 +532,7 @@ binary_sensor:
           sound_file: !lambda return id(jack_disconnected_sound);
       - delay: 800ms
       - lambda: id(jack_unplugged_recently) = false;
-      - script.execute: control_leds
+      - #script.execute: control_leds
 
 light:
   # Hardware LED ring. Not used because remapping needed
@@ -1249,13 +1249,13 @@ script:
             - media_player.volume_up:
           else:
             - media_player.volume_down:
-      - script.execute: control_leds
+      - #script.execute: control_leds
       - delay: 1s
       - lambda: id(dial_touched) = false;
       - sensor.rotary_encoder.set_value:
           id: dial
           value: 0
-      - script.execute: control_leds
+      - #script.execute: control_leds
 
   # Script executed when the hue is increased/decreased from the dial
   - id: control_hue
@@ -1312,7 +1312,7 @@ script:
       - sensor.rotary_encoder.set_value:
           id: dial
           value: 0
-      - script.execute: control_leds
+      - #script.execute: control_leds
       - delay: 500ms
       - lambda: id(color_changed) = false;
 
@@ -1502,11 +1502,11 @@ media_player:
       num_channels: 2
       sample_rate: 48000
     on_mute:
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_unmute:
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_volume:
-      - script.execute: control_leds
+      - #script.execute: control_leds
     on_announcement:
       - mixer_speaker.apply_ducking:
           id: media_mixing_input
@@ -1688,11 +1688,11 @@ voice_assistant:
     - lambda: id(init_in_progress) = false;
     - micro_wake_word.start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_client_disconnected:
     - voice_assistant.stop:
     - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_error:
     # Only set the error phase if the error code is different than duplicate_wake_up_detected or stt-no-text-recognized
     # These two are ignored for a better user experience
@@ -1704,7 +1704,7 @@ voice_assistant:
             - lambda: return code != "stt-no-text-recognized";
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
-          - script.execute: control_leds
+          - #script.execute: control_leds
     # If the error code is cloud-auth-failed, serve a local audio file guiding the user.
     - if:
         condition:
@@ -1722,13 +1722,13 @@ voice_assistant:
         duration: 0.0s         # The duration of the transition (default is no transition)
   on_listening:
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_stt_vad_start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_listening_for_command_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_intent_progress:
     - if:
         condition:
@@ -1736,7 +1736,7 @@ voice_assistant:
           lambda: 'return !x.empty();'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - script.execute: control_leds
+          - #script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   on_tts_start:
@@ -1746,7 +1746,7 @@ voice_assistant:
           lambda: 'return id(voice_assistant_phase) != ${voice_assist_replying_phase_id};'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - script.execute: control_leds
+          - #script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   # When the voice assistant ends ...
@@ -1767,17 +1767,17 @@ voice_assistant:
           - delay: 1s
     # Reset the voice assistant phase id and reset the LED animations.
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_timer_finished:
     - switch.turn_on: timer_ringing
   on_timer_started:
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_timer_cancelled:
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_timer_updated:
-    - script.execute: control_leds
+    - #script.execute: control_leds
   on_timer_tick:
-    - script.execute: control_leds
+    - #script.execute: control_leds
 
 button:
   - platform: factory_reset
