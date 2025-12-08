@@ -37,7 +37,7 @@ esphome:
     priority: 375
     then:
       # Run the script to refresh the LED status
-      - #script.execute: control_leds
+      - script.execute: control_leds
       - delay: 1s
       - switch.turn_on: internal_speaker_amp
       # If after 10 minutes, the device is still initializing (It did not yet connect to Home Assistant), turn off the init_in_progress variable and run the script to refresh the LED status
@@ -47,7 +47,7 @@ esphome:
             lambda: return id(init_in_progress);
           then:
             - lambda: id(init_in_progress) = false;
-            - #script.execute: control_leds
+            - script.execute: control_leds
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -79,9 +79,9 @@ wifi:
   fast_connect: ${hidden_ssid}
   on_connect:
     - lambda: id(improv_ble_in_progress) = false;
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_disconnect:
-    - #script.execute: control_leds
+    - script.execute: control_leds
 
 network:
   enable_ipv6: true
@@ -94,9 +94,9 @@ logger:
 api:
   id: api_id
   on_client_connected:
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_client_disconnected:
-    - #script.execute: control_leds
+    - script.execute: control_leds
   encryption:   # Uses key set by Home Assistant
 
 ota:
@@ -197,9 +197,9 @@ switch:
           then:
             - microphone.unmute:
     on_turn_on:
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_turn_off:
-      - #script.execute: control_leds
+      - script.execute: control_leds
   # Wake Word Sound Switch.
   - platform: template
     id: wake_sound
@@ -231,7 +231,7 @@ switch:
           decibel_reduction: 0
           duration: 1.0s
       # Refresh the LED ring
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_turn_on:
       # Duck audio
       - mixer_speaker.apply_ducking:
@@ -243,7 +243,7 @@ switch:
       # Ring timer
       - script.execute: ring_timer
       # Refresh LED
-      - #script.execute: control_leds
+      - script.execute: control_leds
       # If 15 minutes have passed and the timer is still ringing, stop it.
       - delay: 15min
       - switch.turn_off: timer_ringing
@@ -263,9 +263,9 @@ binary_sensor:
       number: GPIO0
       inverted: true
     on_press:
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_release:
-      - #script.execute: control_leds
+      - script.execute: control_leds
       # If a factory reset is requested, factory reset on release
       - if:
           condition:
@@ -403,7 +403,7 @@ binary_sensor:
               condition:
                 lambda: return !id(init_in_progress);
               then:
-                #- light.turn_on:
+                - light.turn_on:
                     brightness: 100%
                     id: voice_assistant_leds
                     effect: "Tick"
@@ -417,7 +417,7 @@ binary_sensor:
                     id: play_sound
                     priority: true
                     sound_file: !lambda return id(easter_egg_tada_sound);
-                #- light.turn_on:
+                - light.turn_on:
                     brightness: 100%
                     id: voice_assistant_leds
                     effect: "Rainbow"
@@ -433,7 +433,7 @@ binary_sensor:
               condition:
                 lambda: return !id(dial_touched);
               then:
-                #- light.turn_on:
+                - light.turn_on:
                     brightness: 100%
                     id: voice_assistant_leds
                     effect: "Factory Reset Coming Up"
@@ -466,7 +466,7 @@ binary_sensor:
                     id: play_sound
                     priority: true
                     sound_file: !lambda return id(factory_reset_confirmed_sound);
-                #- light.turn_on:
+                - light.turn_on:
                     brightness: 100%
                     red: 100%
                     green: 0%
@@ -510,7 +510,7 @@ binary_sensor:
     #  - Sound played
     on_press:
       - lambda: id(jack_plugged_recently) = true;
-      - #script.execute: control_leds
+      - script.execute: control_leds
       - delay: 200ms
       - script.execute:
           id: play_sound
@@ -518,13 +518,13 @@ binary_sensor:
           sound_file: !lambda return id(jack_connected_sound);
       - delay: 800ms
       - lambda: id(jack_plugged_recently) = false;
-      - #script.execute: control_leds
+      - script.execute: control_leds
     # When the jack is unplugged:
     #  - LED animation
     #  - Sound played
     on_release:
       - lambda: id(jack_unplugged_recently) = true;
-      - #script.execute: control_leds
+      - script.execute: control_leds
       - delay: 200ms
       - script.execute:
           id: play_sound
@@ -532,7 +532,7 @@ binary_sensor:
           sound_file: !lambda return id(jack_disconnected_sound);
       - delay: 800ms
       - lambda: id(jack_unplugged_recently) = false;
-      - #script.execute: control_leds
+      - script.execute: control_leds
 
 light:
   # Hardware LED ring. Not used because remapping needed
@@ -989,12 +989,64 @@ event:
       - long_press
       - easter_egg_press
 
+script:
+  # Master script controlling the LEDs, based on different conditions : initialization in progress, wifi and api connected and voice assistant phase.
+  # For the sake of simplicity and re-usability, the script calls child scripts defined below.
+  # This script will be called every time one of these conditions is changing.
+  - id: control_leds
+    then:
+      - lambda: |
+          if (id(voice_kit_component).is_failed()) {
+            id(control_leds_voice_kit_startup_failed).execute();
+            return;
+          }
+          id(check_if_timers_active).execute();
+          if (id(is_timer_active)){
+            id(fetch_first_active_timer).execute();
+          }
+          if (id(improv_ble_in_progress)) {
+            id(control_leds_improv_ble_state).execute();
+          } else if (id(init_in_progress)) {
+            id(control_leds_init_state).execute();
+          } else if (!id(wifi_id).is_connected() || !id(api_id).is_connected()){
+            id(control_leds_no_ha_connection_state).execute();
+          } else if (id(center_button).state) {
+            id(control_leds_center_button_touched).execute();
+          } else if (id(jack_plugged_recently)) {
+            id(control_leds_jack_plugged_recently).execute();
+          } else if (id(jack_unplugged_recently)) {
+            id(control_leds_jack_unplugged_recently).execute();
+          } else if (id(dial_touched)) {
+            id(control_leds_dial_touched).execute();
+          } else if (id(timer_ringing).state) {
+            id(control_leds_timer_ringing).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_waiting_for_command_phase_id}) {
+            id(control_leds_voice_assistant_waiting_for_command_phase).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_listening_for_command_phase_id}) {
+            id(control_leds_voice_assistant_listening_for_command_phase).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_thinking_phase_id}) {
+            id(control_leds_voice_assistant_thinking_phase).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_replying_phase_id}) {
+            id(control_leds_voice_assistant_replying_phase).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_error_phase_id}) {
+            id(control_leds_voice_assistant_error_phase).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_not_ready_phase_id}) {
+            id(control_leds_voice_assistant_not_ready_phase).execute();
+          } else if (id(is_timer_active)) {
+            id(control_leds_timer_ticking).execute();
+          } else if (id(master_mute_switch).state) {
+            id(control_leds_muted_or_silent).execute();
+          } else if (id(external_media_player).volume == 0.0f || id(external_media_player).is_muted()) {
+            id(control_leds_muted_or_silent).execute();
+          } else if (id(voice_assistant_phase) == ${voice_assist_idle_phase_id}) {
+            id(control_leds_voice_assistant_idle_phase).execute();
+          }
 
   # Script executed if voice_kit startup failed
   # Static red "X"
   - id: control_leds_voice_kit_startup_failed
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: 40%
           red: 0%
           green: 0%
@@ -1006,7 +1058,7 @@ event:
   # Warm White Twinkle
   - id: control_leds_improv_ble_state
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: 66%
           red: 100%
           green: 89%
@@ -1022,7 +1074,7 @@ event:
           condition:
             wifi.connected:
           then:
-            #- light.turn_on:
+            - light.turn_on:
                 brightness: 66%
                 red: 9.4%
                 green: 73.3%
@@ -1030,7 +1082,7 @@ event:
                 id: voice_assistant_leds
                 effect: "Twinkle"
           else:
-            #- light.turn_on:
+            - light.turn_on:
                 brightness: 66%
                 red: 100%
                 green: 89%
@@ -1042,7 +1094,7 @@ event:
   # Red Twinkle (This will be visible during HA updates for example)
   - id: control_leds_no_ha_connection_state
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: 66%
           red: 1
           green: 0
@@ -1065,7 +1117,7 @@ event:
   # Slow clockwise spin of the LED ring.
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Waiting for Command"
@@ -1074,7 +1126,7 @@ event:
   # Fast clockwise spin of the LED ring.
   - id: control_leds_voice_assistant_listening_for_command_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Listening For Command"
@@ -1083,7 +1135,7 @@ event:
   # The spin stops and the 2 LEDs that are currently on and blinking indicating the commend is being processed.
   - id: control_leds_voice_assistant_thinking_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Thinking"
@@ -1092,7 +1144,7 @@ event:
   # Fast anticlockwise spin of the LED ring.
   - id: control_leds_voice_assistant_replying_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Replying"
@@ -1101,7 +1153,7 @@ event:
   # Fast Red Pulse
   - id: control_leds_voice_assistant_error_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return min ( max( id(led_ring).current_values.get_brightness() , 0.2f ) + 0.1f , 1.0f );
           red: 1
           green: 0
@@ -1113,7 +1165,7 @@ event:
   # The LED next to the 2 microphones turn red / one red LED next to the speaker grill
   - id: control_leds_muted_or_silent
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Muted or Silent"
@@ -1121,7 +1173,7 @@ event:
   # Script executed when the voice assistant is not ready
   - id: control_leds_voice_assistant_not_ready_phase
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: 66%
           red: 1
           green: 0
@@ -1133,7 +1185,7 @@ event:
   # A number of LEDs turn on indicating a visual representation of the volume of the media player entity.
   - id: control_leds_dial_touched
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Volume Display"
@@ -1142,7 +1194,7 @@ event:
   # A ripple effect
   - id: control_leds_jack_unplugged_recently
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Jack Unplugged"
@@ -1151,7 +1203,7 @@ event:
   # A ripple effect
   - id: control_leds_jack_plugged_recently
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Jack Plugged"
@@ -1160,7 +1212,7 @@ event:
   # The complete LED ring turns on
   - id: control_leds_center_button_touched
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return min ( max( id(led_ring).current_values.get_brightness() , 0.2f ) + 0.1f , 1.0f );
           id: voice_assistant_leds
           effect: "Center Button Touched"
@@ -1169,7 +1221,7 @@ event:
   # The LED ring blinks.
   - id: control_leds_timer_ringing
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return min ( max( id(led_ring).current_values.get_brightness() , 0.2f ) + 0.1f , 1.0f );
           id: voice_assistant_leds
           effect: "Timer Ring"
@@ -1178,7 +1230,7 @@ event:
   # The LEDs shows the remaining time as a fraction of the full ring.
   - id: control_leds_timer_ticking
     then:
-      #- light.turn_on:
+      - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
           effect: "Timer tick"
@@ -1197,13 +1249,13 @@ event:
             - media_player.volume_up:
           else:
             - media_player.volume_down:
-      - #script.execute: control_leds
+      - script.execute: control_leds
       - delay: 1s
       - lambda: id(dial_touched) = false;
       - sensor.rotary_encoder.set_value:
           id: dial
           value: 0
-      - #script.execute: control_leds
+      - script.execute: control_leds
 
   # Script executed when the hue is increased/decreased from the dial
   - id: control_hue
@@ -1260,7 +1312,7 @@ event:
       - sensor.rotary_encoder.set_value:
           id: dial
           value: 0
-      - #script.execute: control_leds
+      - script.execute: control_leds
       - delay: 500ms
       - lambda: id(color_changed) = false;
 
@@ -1450,11 +1502,11 @@ media_player:
       num_channels: 2
       sample_rate: 48000
     on_mute:
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_unmute:
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_volume:
-      - #script.execute: control_leds
+      - script.execute: control_leds
     on_announcement:
       - mixer_speaker.apply_ducking:
           id: media_mixing_input
@@ -1636,11 +1688,11 @@ voice_assistant:
     - lambda: id(init_in_progress) = false;
     - micro_wake_word.start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_client_disconnected:
     - voice_assistant.stop:
     - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_error:
     # Only set the error phase if the error code is different than duplicate_wake_up_detected or stt-no-text-recognized
     # These two are ignored for a better user experience
@@ -1652,7 +1704,7 @@ voice_assistant:
             - lambda: return code != "stt-no-text-recognized";
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_error_phase_id};
-          - #script.execute: control_leds
+          - script.execute: control_leds
     # If the error code is cloud-auth-failed, serve a local audio file guiding the user.
     - if:
         condition:
@@ -1670,13 +1722,13 @@ voice_assistant:
         duration: 0.0s         # The duration of the transition (default is no transition)
   on_listening:
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_stt_vad_start:
     - lambda: id(voice_assistant_phase) = ${voice_assist_listening_for_command_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_stt_vad_end:
     - lambda: id(voice_assistant_phase) = ${voice_assist_thinking_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_intent_progress:
     - if:
         condition:
@@ -1684,7 +1736,7 @@ voice_assistant:
           lambda: 'return !x.empty();'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - #script.execute: control_leds
+          - script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   on_tts_start:
@@ -1694,7 +1746,7 @@ voice_assistant:
           lambda: 'return id(voice_assistant_phase) != ${voice_assist_replying_phase_id};'
         then:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
-          - #script.execute: control_leds
+          - script.execute: control_leds
           # Start a script that would potentially enable the stop word if the response is longer than a second
           - script.execute: activate_stop_word_once
   # When the voice assistant ends ...
@@ -1715,17 +1767,17 @@ voice_assistant:
           - delay: 1s
     # Reset the voice assistant phase id and reset the LED animations.
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_timer_finished:
     - switch.turn_on: timer_ringing
   on_timer_started:
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_timer_cancelled:
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_timer_updated:
-    - #script.execute: control_leds
+    - script.execute: control_leds
   on_timer_tick:
-    - #script.execute: control_leds
+    - script.execute: control_leds
 
 button:
   - platform: factory_reset
